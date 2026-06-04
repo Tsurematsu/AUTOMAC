@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prueba MQTT Frontend</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body style="font-family: system-ui; background: #1e1e1e; color: #fff; padding: 2rem;">
+    
+    <h2>Conexión MQTT: Frontend</h2>
+    <button onclick="enviarMensaje()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; margin-bottom: 20px;">
+        Enviar Ping a Node.js
+    </button>
+    
+    <div style="background: #000; padding: 1rem; border-radius: 8px;">
+        <h3>Consola de eventos:</h3>
+        <div id="consola" style="font-family: monospace; color: #0f0; line-height: 1.5;"></div>
+    </div>
+
+    <script>
+        // Usamos WebSockets Seguros para el navegador
+        const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+        const topic = 'tsurematsu/acp/prueba_conexion';
+
+        const divConsola = document.getElementById('consola');
+        
+        // Función auxiliar para imprimir en HTML y en la consola del navegador
+        function log(msg) {
+            divConsola.innerHTML += `> ${msg}<br>`;
+            console.log(msg); 
+        }
+
+        log('⏳ Conectando al broker (WebSockets)...');
+        const client = mqtt.connect(brokerUrl);
+
+        client.on('connect', () => {
+            log('✅ Frontend web conectado.');
+
+            client.subscribe(topic, (err) => {
+                if (!err) log(`📡 Suscrito al canal: ${topic}`);
+            });
+        });
+
+        // Escuchamos lo que mande el backend
+        client.on('message', (canal, mensaje) => {
+            log(`[📥 Mensaje Entrante]: ${mensaje.toString()}`);
+        });
+
+        // Esta función se ejecuta al presionar el botón
+        function enviarMensaje() {
+            const data = "¡Hola Node! Botón presionado en la web 🌐";
+            client.publish(topic, data);
+            log(`[📤 Enviando]: ${data}`);
+        }
+    </script>
+</body>
+</html>

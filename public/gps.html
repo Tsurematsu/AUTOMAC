@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explicación GPS y Distancias</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 15px; background-color: #0f172a; color: #f1f5f9; }
+        .container { max-width: 500px; margin: 0 auto; background: #1e293b; padding: 20px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
+        h2, h3 { color: #38bdf8; margin-top: 0; }
+        .panel { background: #0f172a; padding: 15px; border-radius: 12px; text-align: center; margin: 15px 0; border: 2px solid #38bdf8; }
+        .distancia { font-size: 3rem; font-weight: bold; color: #38bdf8; font-family: monospace; }
+        .btn-group { display: flex; gap: 10px; margin: 15px 0; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; font-weight: bold; cursor: pointer; }
+        #btn-start { background-color: #10b981; color: white; }
+        #btn-fijar { background-color: #38bdf8; color: #0f172a; }
+        #btn-stop { background-color: #ef4444; color: white; }
+        button:disabled { background-color: #475569; color: #94a3b8; cursor: not-allowed; }
+        .box { padding: 10px; background-color: #334155; border-radius: 8px; font-size: 13px; margin-top: 10px; }
+        .geo { font-family: monospace; color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Paso a Paso: GPS y Haversine</h2>
+    
+    <div class="panel">
+        <div>Distancia Calculada</div>
+        <div id="distancia-display" class="distancia">0.00</div>
+        <div>Metros</div>
+    </div>
+
+    <div class="btn-group">
+        <button id="btn-start">1. Iniciar GPS</button>
+        <button id="btn-fijar" disabled>2. Fijar Punto A</button>
+        <button id="btn-stop" disabled>Detener</button>
+    </div>
+
+    <div class="box">
+        <h3>Coordenadas en Tiempo Real</h3>
+        <p><strong>Y (Latitud):</strong> <span id="act-lat" class="geo">-</span></p>
+        <p><strong>X (Longitud):</strong> <span id="act-lon" class="geo">-</span></p>
+        <p><strong>Z (Altitud):</strong> <span id="act-alt" class="geo">-</span></p>
+        <p><small>Margen de error hardware: ±<span id="accuracy">-</span> m</small></p>
+    </div>
+
+    <div class="box" style="border-left: 4px solid #38bdf8;">
+        <strong>Punto A Guardado:</strong> <span id="orig-txt" class="geo">Ninguno</span>
+    </div>
+</div>
+
+<script>
+    // Variables globales de control
+    let watchId = null; 
+    let puntoA = null;  // Origen fijo
+    let puntoB = null;  // Posición actual dinámica
+
+    // =========================================================================
+    // FASE 1: EL ALGORITMO MATEMÁTICO (Fórmula de Haversine)
+    // =========================================================================
+    /**
+     * Como la Tierra no es plana, no podemos usar el teorema de Pitágoras convencional.
+     * Esta función calcula la distancia "geodésica" (la curva más corta sobre la superficie de una esfera).
+     */
+    function calcularDistanciaEntreDosPuntos(lat1, lon1, lat2, lon2) {
+        const RADIO_TIERRA_METROS = 6371000; // Radio medio del planeta
+
+        // En JS las funciones trigonométricas (Math.sin, Math.cos) requieren radianes, no grados (°).
+        // Convertimos los grados multiplicando por (π / 180).
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        
+        // Elevamos al cuadrado la mitad de la diferencia de los ángulos (fórmula del semicoverso)
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                  
+        // Calculamos la distancia angular en radianes
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        
+        // Multiplicamos la distancia angular por el radio terrestre para obtener la distancia final en metros
+        return RADIO_TIERRA_METROS * c; 
+    }
+
+    // =========================================================================
+    // FASE 2: INICIALIZACIÓN Y CAPTURA DE COORDENADAS (X, Y, Z)
+    // =========================================================================
+    const btnStart = document.getElementById('btn-start');
+    const btnFijar = document.getElementById('btn-fijar');
+    const btnStop = document.getElementById('btn-stop');
+
+    btnStart.addEventListener('click', () => {
+        // Validación inicial de soporte de hardware/software
+        if (!navigator.geolocation) return alert("Tu navegador no soporta GPS.");
+
+        // Ajustes de UI
+        btnStart.disabled = true;
+        btnFijar.disabled = false;
+        btnStop.disabled = false;
+
+        // Opciones extremas de sensibilidad del sensor
+        const opcionesGps = {
+            enableHighAccuracy: true, // Solicita explícitamente usar satélites GPS en vez de antenas celulares
+            timeout: 5000,           // Si el sensor tarda más de 5s en responder, dispara un evento de reintento
+            maximumAge: 0             // Invalida la memoria caché: obliga al hardware a leer la posición en este milisegundo
+        };
+
+        // Escuchamos el hardware en tiempo real. 
+        // Cada actualización del chip ejecuta la función de éxito de manera asíncrona.
+        watchId = navigator.geolocation.watchPosition((posicion) => {
+            
+            // Extracción nativa de las coordenadas geodésicas esféricas
+            const latitudY  = posicion.coords.latitude;   // Eje Y: Ángulo norte-sur respecto al ecuador
+            const longitudX = posicion.coords.longitude;  // Eje X: Ángulo este-oeste respecto a Greenwich
+            const altitudZ  = posicion.coords.altitude;   // Eje Z: Distancia vertical en metros sobre el elipsoide WGS84
+            const precision = posicion.coords.accuracy;   // Radio de incertidumbre del sensor en metros
+
+            // Almacenamos la posición actual como el "Punto B"
+            puntoB = { lat: latitudY, lon: longitudX };
+
+            // Renderizamos las coordenadas crudas en la UI con alta definición decimal
+            document.getElementById('act-lat').innerText = latitudY.toFixed(7) + "°";
+            document.getElementById('act-lon').innerText = longitudX.toFixed(7) + "°";
+            document.getElementById('act-alt').innerText = altitudZ !== null ? altitudZ.toFixed(2) + " m" : "No disponible (Z)";
+            document.getElementById('accuracy').innerText = precision.toFixed(2);
+
+            // =========================================================================
+            // FASE 4: COMPARACIÓN EN TIEMPO REAL
+            // =========================================================================
+            // Si el usuario ya congeló un Punto A previamente, ejecutamos la comparación métrica en cada parpadeo
+            if (puntoA !== null) {
+                const distanciaEnMetros = calcularDistanciaEntreDosPuntos(
+                    puntoA.lat, puntoA.lon, 
+                    puntoB.lat, puntoB.lon
+                );
+                
+                // Pintamos los metros de diferencia en la pantalla
+                document.getElementById('distancia-display').innerText = distanciaEnMetros.toFixed(2);
+            }
+
+        }, (error) => console.warn("Buscando señal estable...", error), opcionesGps);
+    });
+
+    // =========================================================================
+    // FASE 3: CONGELACIÓN DEL PUNTO DE ORIGEN (PUNTO A)
+    // =========================================================================
+    btnFijar.addEventListener('click', () => {
+        if (!puntoB) return alert("Espera a que el GPS obtenga la primera lectura.");
+
+        // Hacemos una copia profunda (clonación) del Punto B actual para volverlo nuestro Punto A inmutable
+        puntoA = { ...puntoB };
+
+        // Mostramos en la interfaz qué coordenadas quedaron guardadas como base de la medición
+        document.getElementById('orig-txt').innerText = `Y:${puntoA.lat.toFixed(5)} | X:${puntoA.lon.toFixed(5)}`;
+        
+        // Reiniciamos el marcador para empezar la nueva cuenta desde cero
+        document.getElementById('distancia-display').innerText = "0.00";
+    });
+
+    // Limpieza de memoria y apagado del sensor
+    btnStop.addEventListener('click', () => {
+        if (watchId !== null) {
+            navigator.geolocation.clearWatch(watchId); // Apaga el flujo eléctrico/lógico del GPS
+            watchId = null;
+            puntoA = null;
+            puntoB = null;
+            btnStart.disabled = false;
+            btnFijar.disabled = true;
+            btnStop.disabled = true;
+            document.getElementById('distancia-display').innerText = "0.00";
+            document.getElementById('orig-txt').innerText = "Ninguno";
+        }
+    });
+</script>
+
+</body>
+</html>

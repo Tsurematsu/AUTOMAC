@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Encriptación Frontend con CryptoJS</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+</head>
+<body style="font-family: system-ui; background: #1e1e1e; color: #fff; padding: 2rem;">
+
+    <h2>Prueba de Encriptación en el Navegador</h2>
+    <button onclick="probarEncriptacion()" style="padding: 10px; cursor: pointer;">Ejecutar Prueba (Ver Consola)</button>
+
+    <script>
+        // 2. Definimos la misma llave que usa el backend
+        const SECRET_KEY = "mi_llave_maestra_super_segura";
+
+        function probarEncriptacion() {
+            // Un dato sensible que queremos mandar por MQTT
+            const mensajeOriginal = {
+                comando: "encender_luces",
+                token: "ABC-123"
+            };
+
+            console.log("1. Dato original:", mensajeOriginal);
+
+            // --- ENCRIPTAR (Para enviar) ---
+            // Nota: En el frontend, CryptoJS se inyecta globalmente, no usamos 'import'
+            const textoCifrado = CryptoJS.AES.encrypt(JSON.stringify(mensajeOriginal), SECRET_KEY).toString();
+            
+            console.log("\n2. Texto Cifrado (Listo para enviar):", textoCifrado);
+
+            // --- DESENCRIPTAR (Si recibimos algo del backend) ---
+            // Simulamos que recibimos el texto cifrado
+            const bytes = CryptoJS.AES.decrypt(textoCifrado, SECRET_KEY);
+            const textoDescifrado = bytes.toString(CryptoJS.enc.Utf8);
+            
+            const objetoFinal = JSON.parse(textoDescifrado);
+
+            console.log("\n3. Dato Desencriptado:", objetoFinal);
+        }
+    </script>
+</body>
+</html>

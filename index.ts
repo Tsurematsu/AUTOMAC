@@ -3,9 +3,10 @@ import mqtt from 'mqtt';
 import QRCode from 'qrcode';
 import listPhysicalAdapters from './listPhysicalAdapters';
 import updateMacAddress from './updateMacAddress';
-const SECRET_KEY = "FJFDIOKKR45";
-
+import getStaticSecretKey from './getStaticSecretKey';
+import 'dotenv/config';
 async function main() {
+    const SECRET_KEY = await getStaticSecretKey();
     function generarQR(url: string): Promise<void> {
         return new Promise((resolve, reject) => {
             QRCode.toString(url, { type: 'terminal', small: true, margin: 1 }, (err, qr) => {
